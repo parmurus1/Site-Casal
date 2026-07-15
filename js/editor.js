@@ -104,6 +104,15 @@ const Editor = {
     });
 
     wrap.appendChild(content);
+
+    // alça no canto da página direita — pra "pegar" e virar manualmente
+    if (side === 'right') {
+      const turnZone = document.createElement('div');
+      turnZone.className = 'page-turn-zone';
+      turnZone.title = 'Arraste pra virar a página';
+      wrap.appendChild(turnZone);
+    }
+
     return wrap;
   },
 

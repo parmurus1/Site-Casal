@@ -11,10 +11,10 @@ const AppState = {
   isBookOpen: false,
 };
 
-const room = document.querySelector('.room');
+const room = document.getElementById('room');
+const bookStage = document.getElementById('bookStage');
 const book = document.getElementById('book');
 const cover = document.getElementById('cover');
-const openHint = document.getElementById('openHint');
 const navControls = document.getElementById('navControls');
 const prevBtn = document.getElementById('prevBtn');
 const nextBtn = document.getElementById('nextBtn');
@@ -28,6 +28,7 @@ const editorToolbar = document.getElementById('editorToolbar');
 async function boot() {
   await Auth.init();
   Editor.init(AppState);
+  Effects.init();
 
   await loadData();
   Editor.renderAll();
@@ -56,29 +57,93 @@ async function loadData() {
 }
 
 // =========================================================
-// ABRIR O LIVRO (capa) + dica de seta na borda
+// ABRIR O LIVRO — pega e puxa a capa manualmente até "boof"
 // =========================================================
-function wireBookOpening() {
-  book.addEventListener('mousemove', (e) => {
-    if (AppState.isBookOpen) return;
-    const rect = book.getBoundingClientRect();
-    const distFromRight = rect.right - e.clientX;
-    const nearEdge = distFromRight >= 0 && distFromRight < rect.width * 0.28;
-    openHint.classList.toggle('is-visible', nearEdge);
-  });
-  book.addEventListener('mouseleave', () => openHint.classList.remove('is-visible'));
+const OPEN_DRAG_THRESHOLD_DEG = -60; // não puxou o suficiente? volta pro lugar
 
-  cover.addEventListener('click', () => {
+function wireBookOpening() {
+  let dragging = false;
+  let moved = false;
+  let startX = 0;
+  let currentAngle = 0;
+
+  cover.addEventListener('pointerdown', (e) => {
     if (AppState.isBookOpen) return;
-    AppState.isBookOpen = true;
-    cover.classList.add('is-open');
-    room.classList.add('book-open');
-    openHint.classList.remove('is-visible');
-    setTimeout(() => {
-      goToSpread(0);
-      navControls.classList.add('is-visible');
-    }, 550);
+    dragging = true;
+    moved = false;
+    startX = e.clientX;
+    cover.classList.add('is-dragging');
+    if (cover.setPointerCapture) {
+      try { cover.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    }
   });
+
+  cover.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const rect = book.getBoundingClientRect();
+    const dx = e.clientX - startX;
+    if (Math.abs(dx) > 4) moved = true;
+    // arrastar pra esquerda (dx negativo) vai abrindo a capa
+    const deg = Math.max(-178, Math.min(0, (dx / rect.width) * 180));
+    currentAngle = deg;
+    cover.style.transform = `rotateY(${deg}deg)`;
+  });
+
+  const finishDrag = () => {
+    if (!dragging) return;
+    dragging = false;
+    cover.classList.remove('is-dragging');
+
+    if (currentAngle <= OPEN_DRAG_THRESHOLD_DEG) {
+      openBook();
+    } else if (currentAngle < 0) {
+      // não puxou o suficiente — capa volta pro lugar
+      cover.style.transform = '';
+    }
+    currentAngle = 0;
+  };
+
+  cover.addEventListener('pointerup', finishDrag);
+  cover.addEventListener('pointercancel', finishDrag);
+
+  // clique simples (sem arrastar) também abre/fecha
+  cover.addEventListener('click', () => {
+    if (moved) return;
+    if (AppState.isBookOpen) {
+      closeBook();
+    } else {
+      openBook();
+    }
+  });
+}
+
+function openBook() {
+  AppState.isBookOpen = true;
+  cover.style.transform = '';
+  cover.classList.add('is-open');
+  room.classList.add('book-open');
+
+  Effects.playBoof();
+  Effects.burstParticles(6, 50, 30);
+  Effects.shakeCamera(7, 480);
+
+  setTimeout(() => {
+    goToSpread(0);
+    navControls.classList.add('is-visible');
+  }, 480);
+}
+
+function closeBook() {
+  AppState.isBookOpen = false;
+  cover.style.transform = '';
+  cover.classList.remove('is-open');
+  room.classList.remove('book-open');
+  navControls.classList.remove('is-visible');
+  Effects.shakeCamera(4, 320);
+
+  const spreads = Array.from(document.querySelectorAll('.spread'));
+  spreads.forEach((s) => s.classList.remove('is-active', 'is-turned-back'));
+  AppState.currentSpread = 0;
 }
 
 // =========================================================
@@ -87,10 +152,70 @@ function wireBookOpening() {
 function wireNav() {
   prevBtn.addEventListener('click', () => goToSpread(AppState.currentSpread - 1));
   nextBtn.addEventListener('click', () => goToSpread(AppState.currentSpread + 1));
+  document.getElementById('closeBookBtn').addEventListener('click', () => closeBook());
   document.addEventListener('keydown', (e) => {
     if (!AppState.isBookOpen) return;
     if (e.key === 'ArrowRight') goToSpread(AppState.currentSpread + 1);
     if (e.key === 'ArrowLeft') goToSpread(AppState.currentSpread - 1);
+    if (e.key === 'Escape') closeBook();
+  });
+
+  wirePageDragTurn();
+}
+
+// -------- pegar o canto da página e virar manualmente --------
+const PAGE_TURN_THRESHOLD_DEG = -70;
+
+function wirePageDragTurn() {
+  let dragging = false;
+  let activeSpread = null;
+  let startX = 0;
+  let currentAngle = 0;
+
+  document.addEventListener('pointerdown', (e) => {
+    if (!AppState.isBookOpen) return;
+    const zone = e.target.closest('.page-turn-zone');
+    if (!zone) return;
+    const spread = document.querySelectorAll('.spread')[AppState.currentSpread];
+    if (!spread) return;
+
+    dragging = true;
+    activeSpread = spread;
+    startX = e.clientX;
+    currentAngle = 0;
+    spread.classList.add('is-dragging');
+    if (zone.setPointerCapture) {
+      try { zone.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    }
+
+    const onMove = (ev) => {
+      if (!dragging || !activeSpread) return;
+      const rect = book.getBoundingClientRect();
+      const dx = ev.clientX - startX;
+      const deg = Math.max(-170, Math.min(0, (dx / rect.width) * 220));
+      currentAngle = deg;
+      activeSpread.style.transform = `rotateY(${deg}deg)`;
+    };
+
+    const onUp = () => {
+      if (!dragging || !activeSpread) return;
+      dragging = false;
+      activeSpread.classList.remove('is-dragging');
+      activeSpread.style.transform = '';
+
+      const isLast = AppState.currentSpread >= document.querySelectorAll('.spread').length - 1;
+      if (currentAngle <= PAGE_TURN_THRESHOLD_DEG && !isLast) {
+        goToSpread(AppState.currentSpread + 1);
+      }
+      activeSpread = null;
+      zone.removeEventListener('pointermove', onMove);
+      zone.removeEventListener('pointerup', onUp);
+      zone.removeEventListener('pointercancel', onUp);
+    };
+
+    zone.addEventListener('pointermove', onMove);
+    zone.addEventListener('pointerup', onUp);
+    zone.addEventListener('pointercancel', onUp);
   });
 }
 

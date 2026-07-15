@@ -17,8 +17,12 @@
   --gold-soft: #E4CD98;
   --ribbon: #A23B32;
 
-  --room-bg-1: #171512;
-  --room-bg-2: #060504;
+  --grass-1: #4C8A3C;
+  --grass-2: #3A6E2E;
+  --grass-3: #2C5522;
+  --grass-dry: #7FA83F;
+  --sun: #FFE9A8;
+  --sun-core: #FFF6DC;
 
   --font-display: 'Cormorant Garamond', serif;
   --font-hand: 'Caveat', cursive;
@@ -34,23 +38,158 @@ html, body{
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: var(--room-bg-1);
+  background: var(--grass-3);
   font-family: var(--font-ui);
+  cursor: default;
+}
+
+/* mãozinha em qualquer coisa interativa */
+a, button,
+.cover:not(.is-open),
+.nav-btn,
+.account-btn,
+.toolbar-buttons button,
+.add-page-btn,
+.drag-handle,
+.resize-handle,
+.el-delete,
+.page-turn-zone,
+.tab-btn,
+.modal-submit,
+.modal-close{
+  cursor: pointer;
 }
 
 /* =========================================================
-   AMBIENTE
+   AMBIENTE — GRAMADO
 ========================================================= */
 .room{
   position: relative;
   width: 100%;
   height: 100%;
+  overflow: hidden;
   display: flex;
   align-items: center;
-  justify-content: center;
-  background:
-    radial-gradient(ellipse at 50% 40%, #24201a 0%, var(--room-bg-1) 55%, var(--room-bg-2) 100%);
+  justify-content: flex-end;
   perspective: 2400px;
+}
+
+.lawn{
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(255,240,190,0.28) 0%, rgba(255,240,190,0) 45%),
+    repeating-linear-gradient(115deg, rgba(255,255,255,0.035) 0px, rgba(255,255,255,0.035) 2px, transparent 2px, transparent 5px),
+    repeating-linear-gradient(65deg, rgba(0,0,0,0.035) 0px, rgba(0,0,0,0.035) 2px, transparent 2px, transparent 5px),
+    radial-gradient(ellipse 120% 90% at 50% 100%, var(--grass-2) 0%, var(--grass-3) 100%),
+    linear-gradient(160deg, var(--grass-1) 0%, var(--grass-2) 55%, var(--grass-3) 100%);
+  transform-origin: center bottom;
+  animation: lawnSway 7s ease-in-out infinite;
+  will-change: transform;
+}
+.lawn::before{
+  /* textura de fios de grama */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(100deg, rgba(255,255,255,0.05) 0 1px, transparent 1px 9px),
+    repeating-linear-gradient(80deg, rgba(0,0,0,0.06) 0 1px, transparent 1px 11px),
+    repeating-linear-gradient(95deg, rgba(255,255,255,0.03) 0 2px, transparent 2px 14px);
+  mix-blend-mode: overlay;
+  animation: bladesShimmer 5s ease-in-out infinite alternate;
+}
+.lawn::after{
+  /* manchas de grama seca / variação orgânica */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 12% 30%, rgba(127,168,63,0.18) 0%, transparent 16%),
+    radial-gradient(circle at 78% 62%, rgba(127,168,63,0.14) 0%, transparent 18%),
+    radial-gradient(circle at 45% 85%, rgba(44,85,34,0.35) 0%, transparent 22%),
+    radial-gradient(circle at 88% 15%, rgba(127,168,63,0.12) 0%, transparent 14%),
+    radial-gradient(circle at 25% 75%, rgba(44,85,34,0.3) 0%, transparent 20%);
+}
+
+@keyframes lawnSway{
+  0%   { transform: skewX(0deg) scale(1.02); }
+  25%  { transform: skewX(0.6deg) scale(1.02); }
+  50%  { transform: skewX(-0.3deg) scale(1.02); }
+  75%  { transform: skewX(0.3deg) scale(1.02); }
+  100% { transform: skewX(0deg) scale(1.02); }
+}
+@keyframes bladesShimmer{
+  0%   { transform: translateX(0) skewX(0deg); opacity: 0.9; }
+  100% { transform: translateX(6px) skewX(1.2deg); opacity: 1; }
+}
+
+/* sol batendo no diário */
+.sun-glow{
+  position: absolute;
+  top: -18%;
+  right: 6%;
+  width: 46vw;
+  height: 46vw;
+  max-width: 620px;
+  max-height: 620px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--sun-core) 0%, var(--sun) 30%, rgba(255,233,168,0.25) 55%, rgba(255,233,168,0) 72%);
+  filter: blur(2px);
+  z-index: 1;
+  pointer-events: none;
+  animation: sunPulse 6s ease-in-out infinite;
+}
+@keyframes sunPulse{
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50%      { opacity: 1; transform: scale(1.04); }
+}
+.sun-rays{
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    conic-gradient(from 200deg at 85% 5%,
+      rgba(255,246,220,0.12) 0deg,
+      rgba(255,246,220,0) 12deg,
+      rgba(255,246,220,0.08) 24deg,
+      rgba(255,246,220,0) 40deg,
+      rgba(255,246,220,0.1) 55deg,
+      rgba(255,246,220,0) 75deg,
+      rgba(255,246,220,0.07) 95deg,
+      rgba(255,246,220,0) 120deg);
+  mix-blend-mode: screen;
+  animation: raysDrift 10s linear infinite;
+}
+@keyframes raysDrift{
+  0%   { opacity: 0.7; }
+  50%  { opacity: 1; }
+  100% { opacity: 0.7; }
+}
+
+/* =========================================================
+   CÂMERA — leve tremor contínuo, estilo chill
+========================================================= */
+.camera-shake{
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  animation: cameraDrift 9s ease-in-out infinite;
+  will-change: transform;
+}
+@keyframes cameraDrift{
+  0%   { transform: translate(0px, 0px) rotate(0deg); }
+  20%  { transform: translate(0.6px, -0.4px) rotate(0.02deg); }
+  40%  { transform: translate(-0.5px, 0.5px) rotate(-0.015deg); }
+  60%  { transform: translate(0.4px, 0.6px) rotate(0.02deg); }
+  80%  { transform: translate(-0.6px, -0.3px) rotate(-0.02deg); }
+  100% { transform: translate(0px, 0px) rotate(0deg); }
 }
 
 .table-glow{
@@ -60,8 +199,69 @@ html, body{
   max-width: 900px;
   max-height: 900px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(203,169,104,0.10) 0%, rgba(203,169,104,0) 70%);
+  background: radial-gradient(circle, rgba(255,233,168,0.10) 0%, rgba(255,233,168,0) 70%);
   pointer-events: none;
+}
+
+/* =========================================================
+   TÍTULO DO SITE (some ao abrir o diário)
+========================================================= */
+.site-title{
+  position: absolute;
+  left: 6%;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  max-width: 34vw;
+  transition: opacity 0.8s ease, transform 0.8s ease, filter 0.8s ease;
+  pointer-events: none;
+}
+.site-title-eyebrow{
+  font-family: var(--font-ui);
+  font-size: 13px;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: rgba(255,246,220,0.85);
+  text-shadow: 0 2px 6px rgba(0,0,0,0.35);
+}
+.site-title h1{
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: clamp(40px, 5.2vw, 78px);
+  margin: 4px 0 6px;
+  color: #FFFDF6;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.25), 0 12px 30px rgba(0,0,0,0.35);
+  line-height: 1;
+}
+.site-title-heart{
+  color: var(--ribbon);
+  font-size: 26px;
+  filter: drop-shadow(0 3px 5px rgba(0,0,0,0.3));
+}
+.room.book-open .site-title{
+  opacity: 0;
+  transform: translateY(-50%) translateX(24px);
+  filter: blur(6px);
+}
+
+/* =========================================================
+   PALCO DO LIVRO — começa na metade direita, depois centraliza
+========================================================= */
+.book-stage{
+  position: relative;
+  width: var(--book-w);
+  height: var(--book-h);
+  margin-right: 6vw;
+  transform-style: preserve-3d;
+  transition: margin-right 1.1s cubic-bezier(.55,.06,.2,1), transform 1.1s cubic-bezier(.55,.06,.2,1);
+}
+.room.book-open .book-stage{
+  margin-right: 0;
 }
 
 /* =========================================================
@@ -69,10 +269,10 @@ html, body{
 ========================================================= */
 .book{
   position: relative;
-  width: var(--book-w);
-  height: var(--book-h);
+  width: 100%;
+  height: 100%;
   transform-style: preserve-3d;
-  filter: drop-shadow(0 40px 60px rgba(0,0,0,0.55));
+  filter: drop-shadow(0 40px 60px rgba(20,35,15,0.45));
 }
 
 .book-spine{
@@ -112,6 +312,7 @@ html, body{
   transform: rotateY(-160deg);
   opacity: 0;
 }
+.spread.is-dragging{ transition: none; }
 
 .page{
   width: 50%;
@@ -131,7 +332,38 @@ html, body{
 .page-right{
   border-radius: 0 6px 6px 0;
   box-shadow: inset 18px 0 30px -20px rgba(0,0,0,0.28), inset 0 0 40px rgba(120,95,50,0.10);
+  position: relative;
 }
+
+/* alça / cantinho pra "pegar" a página e virar manualmente */
+.page-turn-zone{
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 26%;
+  z-index: 6;
+  background: linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(120,95,50,0.06) 100%);
+  transition: background 0.2s;
+}
+.page-turn-zone:hover{
+  background: linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(120,95,50,0.14) 100%);
+}
+.page-turn-zone::after{
+  content: "";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 30px;
+  height: 30px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: rgba(203,169,104,0.25) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233A2F22' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6l6 6-6 6'/%3E%3C/svg%3E") center/16px no-repeat;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+}
+.spread.is-active .page-turn-zone::after{ opacity: 0.85; }
+.page-turn-zone:hover::after{ transform: translateY(-50%) scale(1.12); }
 
 .page-content{
   position: relative;
@@ -236,7 +468,6 @@ h3.handwritten{
   border: 1px solid var(--cover-blue);
   background: transparent;
   color: var(--cover-blue);
-  cursor: pointer;
   transition: background 0.2s, color 0.2s;
 }
 .add-page-btn:hover{ background: var(--cover-blue); color: #fff; }
@@ -248,21 +479,27 @@ h3.handwritten{
 }
 
 /* =========================================================
-   CAPA (frente)
+   CAPA (frente) — agora se "pega e puxa" pra abrir
 ========================================================= */
 .cover{
   position: absolute;
   inset: 0;
   transform-style: preserve-3d;
   transform-origin: left center;
-  transition: transform 1.1s cubic-bezier(.55,.06,.2,1);
+  transition: transform 0.9s cubic-bezier(.33,1.4,.4,1);
   z-index: 20;
-  cursor: pointer;
 }
+.cover.is-dragging{ transition: none; }
 
 .cover.is-open{
   transform: rotateY(-178deg);
-  cursor: default;
+  pointer-events: none;
+}
+.cover.is-open .cover-inner{
+  pointer-events: none;
+}
+.cover.is-open .cover-inside{
+  pointer-events: auto;
 }
 
 .cover-inner{
@@ -280,7 +517,7 @@ h3.handwritten{
   box-shadow:
     0 0 0 10px var(--cover-blue-dark) inset,
     0 0 0 12px rgba(203,169,104,0.5) inset,
-    0 30px 50px rgba(0,0,0,0.5);
+    0 30px 50px rgba(20,35,15,0.4);
 }
 
 .ribbon{
@@ -334,6 +571,26 @@ h3.handwritten{
   filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3));
 }
 
+.cover-pull-hint{
+  position: absolute;
+  bottom: 6%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold-soft);
+  opacity: 0.75;
+  animation: pullHintBob 1.8s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes pullHintBob{
+  0%, 100% { transform: translateX(-50%) translateX(0); opacity: 0.5; }
+  50%      { transform: translateX(-50%) translateX(6px); opacity: 0.9; }
+}
+.room.book-open .cover-pull-hint{ display: none; }
+
 .cover-inside{
   position: absolute;
   inset: 0;
@@ -352,33 +609,22 @@ h3.handwritten{
 .cover .cover-inside{ position: absolute; }
 
 /* =========================================================
-   DICA DE ABRIR (setinha)
+   PARTÍCULAS DO "BOOF" AO ABRIR
 ========================================================= */
-.open-hint{
+.particles-layer{
   position: absolute;
-  top: 50%;
-  right: calc(50% - var(--book-w) / 2 - 46px);
-  transform: translateY(-50%) translateX(-8px);
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: rgba(203,169,104,0.14);
-  border: 1px solid rgba(203,169,104,0.4);
-  color: var(--gold);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
+  inset: 0;
+  z-index: 25;
   pointer-events: none;
-  transition: opacity 0.3s, transform 0.3s;
-  z-index: 30;
+  overflow: visible;
 }
-.open-hint svg{ width: 18px; height: 18px; }
-.open-hint.is-visible{
-  opacity: 1;
-  transform: translateY(-50%) translateX(0);
+.dust-particle{
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,246,220,0.95) 0%, rgba(203,169,104,0.5) 60%, rgba(203,169,104,0) 100%);
+  opacity: 0;
+  will-change: transform, opacity;
 }
-.room.book-open .open-hint{ display: none; }
 
 /* =========================================================
    NAVEGAÇÃO
@@ -406,37 +652,57 @@ h3.handwritten{
   height: 36px;
   border-radius: 50%;
   border: 1px solid rgba(203,169,104,0.4);
-  background: rgba(0,0,0,0.25);
+  background: rgba(20,35,15,0.35);
   color: var(--gold-soft);
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
   transition: background 0.2s, transform 0.15s;
 }
 .nav-btn:hover{ background: rgba(203,169,104,0.25); transform: scale(1.06); }
 .nav-btn svg{ width: 16px; height: 16px; }
 .nav-btn:disabled{ opacity: 0.25; cursor: default; pointer-events: none; }
+.nav-btn-close{
+  margin-left: 8px;
+  border-color: rgba(162,59,50,0.5);
+  color: #E7B7AF;
+}
+.nav-btn-close:hover{ background: rgba(162,59,50,0.3); }
 .nav-page-indicator{
   font-family: var(--font-ui);
   font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(228, 205, 152, 0.7);
+  color: rgba(228, 205, 152, 0.85);
   min-width: 70px;
   text-align: center;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.4);
 }
 
 /* =========================================================
    RESPONSIVO
 ========================================================= */
+@media (max-width: 900px){
+  .room{ justify-content: center; }
+  .book-stage{ margin-right: 0; }
+  .site-title{
+    left: 50%;
+    top: 12%;
+    transform: translateX(-50%);
+    align-items: center;
+    text-align: center;
+    max-width: 90vw;
+  }
+  .room.book-open .site-title{
+    transform: translateX(-50%) translateY(-16px);
+  }
+}
 @media (max-width: 720px){
-  :root{ --book-w: 92vw; --book-h: 70vh; }
-  .page-left, .page-right{ }
+  :root{ --book-w: 92vw; --book-h: 68vh; }
   .counter-value{ font-size: 60px; }
   h3.handwritten{ font-size: 26px; }
   .entry-text{ font-size: 18px; }
-  .open-hint{ right: 4%; }
+  .page-turn-zone{ width: 34%; }
 }
 
 /* =========================================================
@@ -454,9 +720,8 @@ h3.handwritten{
   padding: 9px 16px;
   border-radius: 999px;
   border: 1px solid rgba(203,169,104,0.4);
-  background: rgba(0,0,0,0.3);
+  background: rgba(20,35,15,0.4);
   color: var(--gold-soft);
-  cursor: pointer;
   transition: background 0.2s;
 }
 .account-btn:hover{ background: rgba(203,169,104,0.2); }
@@ -487,14 +752,14 @@ h3.handwritten{
   font-family: var(--font-ui);
   font-size: 11px;
   color: var(--gold-soft);
-  background: rgba(0,0,0,0.35);
+  background: rgba(20,35,15,0.45);
   padding: 4px 12px;
   border-radius: 999px;
 }
 .toolbar-buttons{
   display: flex;
   gap: 8px;
-  background: rgba(0,0,0,0.4);
+  background: rgba(20,35,15,0.5);
   border: 1px solid rgba(203,169,104,0.3);
   padding: 8px;
   border-radius: 14px;
@@ -508,7 +773,6 @@ h3.handwritten{
   border: 1px solid transparent;
   background: rgba(255,255,255,0.06);
   color: var(--gold-soft);
-  cursor: pointer;
   white-space: nowrap;
   transition: background 0.2s, border-color 0.2s;
 }
@@ -608,7 +872,6 @@ body.edit-mode .editable-page{ cursor: pointer; }
   color: #fff;
   font-size: 13px;
   line-height: 1;
-  cursor: pointer;
 }
 .resize-handle{
   position: absolute;
@@ -629,7 +892,7 @@ body.edit-mode .editable-page{ cursor: pointer; }
 .modal-overlay{
   position: fixed;
   inset: 0;
-  background: rgba(6,5,4,0.72);
+  background: rgba(10,18,8,0.72);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -660,7 +923,6 @@ body.edit-mode .editable-page{ cursor: pointer; }
   border: none;
   font-size: 20px;
   color: var(--ink-soft);
-  cursor: pointer;
 }
 .modal-tabs{
   display: flex;
@@ -676,7 +938,6 @@ body.edit-mode .editable-page{ cursor: pointer; }
   border: 1px solid var(--paper-edge);
   background: transparent;
   color: var(--ink-soft);
-  cursor: pointer;
 }
 .tab-btn.is-active{
   background: var(--cover-blue);
@@ -703,6 +964,7 @@ body.edit-mode .editable-page{ cursor: pointer; }
   border: 1px solid var(--paper-edge);
   background: #fff;
   color: var(--ink);
+  cursor: text;
 }
 .modal-error{
   font-size: 12px;
@@ -718,6 +980,5 @@ body.edit-mode .editable-page{ cursor: pointer; }
   border: none;
   background: var(--cover-blue);
   color: #fff;
-  cursor: pointer;
 }
 .modal-submit:hover{ background: var(--cover-blue-dark); }
