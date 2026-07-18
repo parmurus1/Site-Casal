@@ -20,16 +20,15 @@
   --grass-1: #4C8A3C;
   --grass-2: #3A6E2E;
   --grass-3: #2C5522;
-  --grass-dry: #7FA83F;
   --sun: #FFE9A8;
-  --sun-core: #FFF6DC;
 
   --font-display: 'Cormorant Garamond', serif;
   --font-hand: 'Caveat', cursive;
   --font-ui: 'Inter', sans-serif;
 
-  --book-w: min(920px, 86vw);
-  --book-h: min(620px, 78vh);
+  /* tamanho de uma página no espaço 3D (unidades Three.js = "metros" arbitrários) */
+  --page-w-units: 3.2;
+  --page-h-units: 2.2;
 }
 
 *{ box-sizing: border-box; }
@@ -40,12 +39,16 @@ html, body{
   overflow: hidden;
   background: var(--grass-3);
   font-family: var(--font-ui);
-  cursor: default;
 }
 
-/* mãozinha em qualquer coisa interativa */
+/* o cursor "mãozinha" de verdade é aplicado via JS (classes hand-cursor / grab-cursor)
+   porque muda dependendo do que está sob o mouse dentro do canvas 3D */
+body{ cursor: default; }
+body.hand-cursor{ cursor: pointer; }
+body.grab-cursor{ cursor: grab; }
+body.grabbing-cursor{ cursor: grabbing; }
+
 a, button,
-.cover:not(.is-open),
 .nav-btn,
 .account-btn,
 .toolbar-buttons button,
@@ -53,7 +56,6 @@ a, button,
 .drag-handle,
 .resize-handle,
 .el-delete,
-.page-turn-zone,
 .tab-btn,
 .modal-submit,
 .modal-close{
@@ -61,309 +63,122 @@ a, button,
 }
 
 /* =========================================================
-   AMBIENTE — GRAMADO
+   RAIZ DA CENA — canvas WebGL + camada CSS3D no mesmo espaço
 ========================================================= */
-.room{
+.scene-root{
   position: relative;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  perspective: 2400px;
 }
 
-.lawn{
+#webglCanvas{
   position: absolute;
   inset: 0;
+  display: block;
   z-index: 0;
-  background:
-    radial-gradient(ellipse at 50% -10%, rgba(255,240,190,0.28) 0%, rgba(255,240,190,0) 45%),
-    repeating-linear-gradient(115deg, rgba(255,255,255,0.035) 0px, rgba(255,255,255,0.035) 2px, transparent 2px, transparent 5px),
-    repeating-linear-gradient(65deg, rgba(0,0,0,0.035) 0px, rgba(0,0,0,0.035) 2px, transparent 2px, transparent 5px),
-    radial-gradient(ellipse 120% 90% at 50% 100%, var(--grass-2) 0%, var(--grass-3) 100%),
-    linear-gradient(160deg, var(--grass-1) 0%, var(--grass-2) 55%, var(--grass-3) 100%);
-  transform-origin: center bottom;
-  animation: lawnSway 7s ease-in-out infinite;
-  will-change: transform;
-}
-.lawn::before{
-  /* textura de fios de grama */
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image:
-    repeating-linear-gradient(100deg, rgba(255,255,255,0.05) 0 1px, transparent 1px 9px),
-    repeating-linear-gradient(80deg, rgba(0,0,0,0.06) 0 1px, transparent 1px 11px),
-    repeating-linear-gradient(95deg, rgba(255,255,255,0.03) 0 2px, transparent 2px 14px);
-  mix-blend-mode: overlay;
-  animation: bladesShimmer 5s ease-in-out infinite alternate;
-}
-.lawn::after{
-  /* manchas de grama seca / variação orgânica */
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at 12% 30%, rgba(127,168,63,0.18) 0%, transparent 16%),
-    radial-gradient(circle at 78% 62%, rgba(127,168,63,0.14) 0%, transparent 18%),
-    radial-gradient(circle at 45% 85%, rgba(44,85,34,0.35) 0%, transparent 22%),
-    radial-gradient(circle at 88% 15%, rgba(127,168,63,0.12) 0%, transparent 14%),
-    radial-gradient(circle at 25% 75%, rgba(44,85,34,0.3) 0%, transparent 20%);
+  /* o cursor "real" fica em cima disso via body classes, então não travamos aqui */
 }
 
-@keyframes lawnSway{
-  0%   { transform: skewX(0deg) scale(1.02); }
-  25%  { transform: skewX(0.6deg) scale(1.02); }
-  50%  { transform: skewX(-0.3deg) scale(1.02); }
-  75%  { transform: skewX(0.3deg) scale(1.02); }
-  100% { transform: skewX(0deg) scale(1.02); }
-}
-@keyframes bladesShimmer{
-  0%   { transform: translateX(0) skewX(0deg); opacity: 0.9; }
-  100% { transform: translateX(6px) skewX(1.2deg); opacity: 1; }
-}
-
-/* sol batendo no diário */
-.sun-glow{
-  position: absolute;
-  top: -18%;
-  right: 6%;
-  width: 46vw;
-  height: 46vw;
-  max-width: 620px;
-  max-height: 620px;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--sun-core) 0%, var(--sun) 30%, rgba(255,233,168,0.25) 55%, rgba(255,233,168,0) 72%);
-  filter: blur(2px);
-  z-index: 1;
-  pointer-events: none;
-  animation: sunPulse 6s ease-in-out infinite;
-}
-@keyframes sunPulse{
-  0%, 100% { opacity: 0.85; transform: scale(1); }
-  50%      { opacity: 1; transform: scale(1.04); }
-}
-.sun-rays{
+/* container do CSS3DRenderer — mesma perspectiva/câmera do WebGL, plano por plano.
+   O CSS3DRenderer do Three.js define pointer-events:auto inline em cada div que
+   ele gerencia (para permitir HTML clicável por padrão) — precisamos neutralizar
+   isso em profundidade e reativar só onde o conteúdo da página realmente precisa
+   ser interativo (dentro de .page3d, ver regra mais abaixo). */
+#css3dContainer{
   position: absolute;
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  background:
-    conic-gradient(from 200deg at 85% 5%,
-      rgba(255,246,220,0.12) 0deg,
-      rgba(255,246,220,0) 12deg,
-      rgba(255,246,220,0.08) 24deg,
-      rgba(255,246,220,0) 40deg,
-      rgba(255,246,220,0.1) 55deg,
-      rgba(255,246,220,0) 75deg,
-      rgba(255,246,220,0.07) 95deg,
-      rgba(255,246,220,0) 120deg);
-  mix-blend-mode: screen;
-  animation: raysDrift 10s linear infinite;
+  overflow: hidden;
 }
-@keyframes raysDrift{
-  0%   { opacity: 0.7; }
-  50%  { opacity: 1; }
-  100% { opacity: 0.7; }
+#css3dContainer div{
+  pointer-events: none;
+}
+#css3dContainer .page3d,
+#css3dContainer .page3d *{
+  pointer-events: auto;
 }
 
 /* =========================================================
-   CÂMERA — leve tremor contínuo, estilo chill
+   UI 2D FIXA — título, nav, conta, toolbar, modais.
+   Não participa da perspectiva 3D; sempre de frente pra câmera.
 ========================================================= */
-.camera-shake{
-  position: relative;
-  z-index: 2;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  animation: cameraDrift 9s ease-in-out infinite;
-  will-change: transform;
-}
-@keyframes cameraDrift{
-  0%   { transform: translate(0px, 0px) rotate(0deg); }
-  20%  { transform: translate(0.6px, -0.4px) rotate(0.02deg); }
-  40%  { transform: translate(-0.5px, 0.5px) rotate(-0.015deg); }
-  60%  { transform: translate(0.4px, 0.6px) rotate(0.02deg); }
-  80%  { transform: translate(-0.6px, -0.3px) rotate(-0.02deg); }
-  100% { transform: translate(0px, 0px) rotate(0deg); }
-}
-
-.table-glow{
+.ui-layer{
   position: absolute;
-  width: 70vw;
-  height: 70vw;
-  max-width: 900px;
-  max-height: 900px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255,233,168,0.10) 0%, rgba(255,233,168,0) 70%);
+  inset: 0;
+  z-index: 5;
   pointer-events: none;
+}
+.ui-layer > *{
+  pointer-events: auto;
 }
 
 /* =========================================================
    TÍTULO DO SITE (some ao abrir o diário)
+   — gigante, solto, escrito à mão, sem moldura
 ========================================================= */
 .site-title{
   position: absolute;
-  left: 6%;
+  left: 4%;
   top: 50%;
   transform: translateY(-50%);
-  z-index: 10;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  text-align: right;
-  max-width: 34vw;
+  align-items: flex-start;
+  text-align: left;
+  max-width: 40vw;
   transition: opacity 0.8s ease, transform 0.8s ease, filter 0.8s ease;
   pointer-events: none;
 }
-.site-title-eyebrow{
-  font-family: var(--font-ui);
-  font-size: 13px;
-  letter-spacing: 0.35em;
-  text-transform: uppercase;
-  color: rgba(255,246,220,0.85);
-  text-shadow: 0 2px 6px rgba(0,0,0,0.35);
-}
 .site-title h1{
-  font-family: var(--font-display);
-  font-style: italic;
-  font-weight: 600;
-  font-size: clamp(40px, 5.2vw, 78px);
-  margin: 4px 0 6px;
+  font-family: var(--font-hand);
+  font-weight: 700;
+  font-size: clamp(72px, 9vw, 132px);
+  margin: 0;
   color: #FFFDF6;
-  text-shadow: 0 2px 4px rgba(0,0,0,0.25), 0 12px 30px rgba(0,0,0,0.35);
-  line-height: 1;
+  text-shadow: 0 3px 0 rgba(0,0,0,0.12), 0 14px 30px rgba(0,0,0,0.4);
+  line-height: 0.92;
+  letter-spacing: 0.01em;
 }
-.site-title-heart{
-  color: var(--ribbon);
-  font-size: 26px;
-  filter: drop-shadow(0 3px 5px rgba(0,0,0,0.3));
-}
-.room.book-open .site-title{
+.site-title.is-hidden{
   opacity: 0;
   transform: translateY(-50%) translateX(24px);
   filter: blur(6px);
 }
 
-/* =========================================================
-   PALCO DO LIVRO — começa na metade direita, depois centraliza
-========================================================= */
-.book-stage{
-  position: relative;
-  width: var(--book-w);
-  height: var(--book-h);
-  margin-right: 6vw;
-  transform-style: preserve-3d;
-  transition: margin-right 1.1s cubic-bezier(.55,.06,.2,1), transform 1.1s cubic-bezier(.55,.06,.2,1);
-}
-.room.book-open .book-stage{
-  margin-right: 0;
-}
-
-/* =========================================================
-   LIVRO
-========================================================= */
-.book{
-  position: relative;
-  width: 100%;
-  height: 100%;
-  transform-style: preserve-3d;
-  filter: drop-shadow(0 40px 60px rgba(20,35,15,0.45));
-}
-
-.book-spine{
-  position: absolute;
-  left: 50%;
-  top: 2%;
-  bottom: 2%;
-  width: 14px;
-  transform: translateX(-50%) translateZ(-2px);
-  background: linear-gradient(90deg, rgba(0,0,0,0.35), rgba(0,0,0,0.05), rgba(0,0,0,0.35));
-  border-radius: 3px;
+@media (max-width: 900px){
+  .site-title{
+    left: 50%;
+    top: 10%;
+    transform: translateX(-50%);
+    align-items: center;
+    text-align: center;
+    max-width: 90vw;
+  }
+  .site-title.is-hidden{
+    transform: translateX(-50%) translateY(-16px);
+  }
 }
 
 /* =========================================================
-   PÁGINAS (miolo)
+   CONTEÚDO DE PÁGINA — a MESMA tipografia/regras de antes,
+   agora renderizada dentro de um plano CSS3D em vez de uma
+   div plana. O elemento raiz (.page3d) define o tamanho em
+   pixels que corresponde a --page-w-units/--page-h-units
+   (ver PX_PER_UNIT em scene3d.js).
 ========================================================= */
-.pages{
-  position: absolute;
-  inset: 2% 0;
-  display: flex;
-  transform-style: preserve-3d;
-}
-
-.spread{
-  position: absolute;
-  inset: 0;
-  display: flex;
-  transform-style: preserve-3d;
-  transition: transform 0.9s cubic-bezier(.4,.1,.2,1), opacity 0.5s;
-  transform-origin: left center;
-}
-
-/* pilha: cada spread empilhado, só o ativo visível/no topo */
-.spread{ opacity: 0; pointer-events: none; z-index: 1; }
-.spread.is-active{ opacity: 1; pointer-events: auto; z-index: 5; }
-.spread.is-turned-back{
-  transform: rotateY(-160deg);
-  opacity: 0;
-}
-.spread.is-dragging{ transition: none; }
-
-.page{
-  width: 50%;
-  height: 100%;
+.page3d{
+  width: 480px;
+  height: 330px;
   background:
     repeating-linear-gradient(0deg, rgba(120,95,50,0.035) 0px, rgba(120,95,50,0.035) 1px, transparent 1px, transparent 26px),
     linear-gradient(120deg, var(--paper) 0%, #F3E9D2 45%, var(--paper) 100%);
   box-shadow: inset 0 0 40px rgba(120,95,50,0.10);
   position: relative;
   overflow: hidden;
+  border-radius: 4px;
 }
-
-.page-left{
-  border-radius: 6px 0 0 6px;
-  box-shadow: inset -18px 0 30px -20px rgba(0,0,0,0.28), inset 0 0 40px rgba(120,95,50,0.10);
-}
-.page-right{
-  border-radius: 0 6px 6px 0;
-  box-shadow: inset 18px 0 30px -20px rgba(0,0,0,0.28), inset 0 0 40px rgba(120,95,50,0.10);
-  position: relative;
-}
-
-/* alça / cantinho pra "pegar" a página e virar manualmente */
-.page-turn-zone{
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 26%;
-  z-index: 6;
-  background: linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(120,95,50,0.06) 100%);
-  transition: background 0.2s;
-}
-.page-turn-zone:hover{
-  background: linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(120,95,50,0.14) 100%);
-}
-.page-turn-zone::after{
-  content: "";
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  width: 30px;
-  height: 30px;
-  transform: translateY(-50%);
-  border-radius: 50%;
-  background: rgba(203,169,104,0.25) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233A2F22' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6l6 6-6 6'/%3E%3C/svg%3E") center/16px no-repeat;
-  opacity: 0;
-  transition: opacity 0.2s, transform 0.2s;
-}
-.spread.is-active .page-turn-zone::after{ opacity: 0.85; }
-.page-turn-zone:hover::after{ transform: translateY(-50%) scale(1.12); }
 
 .page-content{
   position: relative;
@@ -398,13 +213,6 @@ h3.handwritten{
   line-height: 1.5;
   color: var(--ink-soft);
   max-width: 34ch;
-}
-
-/* pauta discreta atrás do texto escrito à mão */
-.page-content::before{
-  content: "";
-  position: absolute;
-  inset: 0;
 }
 
 /* -------- página do contador -------- */
@@ -458,7 +266,6 @@ h3.handwritten{
   color: var(--ink-soft);
   background: rgba(255,255,255,0.15);
 }
-.add-page{ align-items: center; justify-content: center; }
 .add-page-btn{
   font-family: var(--font-ui);
   font-size: 13px;
@@ -471,160 +278,6 @@ h3.handwritten{
   transition: background 0.2s, color 0.2s;
 }
 .add-page-btn:hover{ background: var(--cover-blue); color: #fff; }
-
-.back-cover{
-  background:
-    repeating-linear-gradient(45deg, var(--cover-blue-line) 0 2px, var(--cover-blue) 2px 22px),
-    repeating-linear-gradient(-45deg, var(--cover-blue-line) 0 2px, transparent 2px 22px);
-}
-
-/* =========================================================
-   CAPA (frente) — agora se "pega e puxa" pra abrir
-========================================================= */
-.cover{
-  position: absolute;
-  inset: 0;
-  transform-style: preserve-3d;
-  transform-origin: left center;
-  transition: transform 0.9s cubic-bezier(.33,1.4,.4,1);
-  z-index: 20;
-}
-.cover.is-dragging{ transition: none; }
-
-.cover.is-open{
-  transform: rotateY(-178deg);
-  pointer-events: none;
-}
-.cover.is-open .cover-inner{
-  pointer-events: none;
-}
-.cover.is-open .cover-inside{
-  pointer-events: auto;
-}
-
-.cover-inner{
-  position: absolute;
-  inset: 0;
-  border-radius: 6px;
-  backface-visibility: hidden;
-  background-color: var(--cover-blue);
-  background-image:
-    repeating-linear-gradient(0deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 24px),
-    repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 24px),
-    repeating-linear-gradient(0deg, var(--cover-blue-line) 0px, var(--cover-blue-line) 2px, transparent 2px, transparent 24px),
-    repeating-linear-gradient(90deg, var(--cover-blue-line) 0px, var(--cover-blue-line) 2px, transparent 2px, transparent 24px),
-    linear-gradient(160deg, var(--cover-blue-light) 0%, var(--cover-blue) 45%, var(--cover-blue-dark) 100%);
-  box-shadow:
-    0 0 0 10px var(--cover-blue-dark) inset,
-    0 0 0 12px rgba(203,169,104,0.5) inset,
-    0 30px 50px rgba(20,35,15,0.4);
-}
-
-.ribbon{
-  position: absolute;
-  top: -6px;
-  right: 14%;
-  width: 22px;
-  height: 90px;
-  background: var(--ribbon);
-  clip-path: polygon(0 0, 100% 0, 100% 85%, 50% 100%, 0 85%);
-  box-shadow: 0 6px 10px rgba(0,0,0,0.35);
-}
-
-.cover-frame{
-  position: absolute;
-  inset: 12%;
-  border: 1.5px solid rgba(203,169,104,0.55);
-  border-radius: 3px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  text-align: center;
-}
-
-.cover-eyebrow{
-  font-family: var(--font-ui);
-  font-size: 12px;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-  color: var(--gold-soft);
-  opacity: 0.85;
-}
-
-.cover-title{
-  font-family: var(--font-display);
-  font-style: italic;
-  font-size: clamp(42px, 6vw, 66px);
-  font-weight: 600;
-  margin: 0;
-  color: var(--gold);
-  text-shadow: 0 1px 0 rgba(255,255,255,0.15), 0 3px 6px rgba(0,0,0,0.4);
-  letter-spacing: 0.02em;
-}
-
-.cover-heart{
-  color: var(--ribbon);
-  font-size: 22px;
-  margin-top: 4px;
-  filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3));
-}
-
-.cover-pull-hint{
-  position: absolute;
-  bottom: 6%;
-  left: 50%;
-  transform: translateX(-50%);
-  font-family: var(--font-ui);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--gold-soft);
-  opacity: 0.75;
-  animation: pullHintBob 1.8s ease-in-out infinite;
-  pointer-events: none;
-}
-@keyframes pullHintBob{
-  0%, 100% { transform: translateX(-50%) translateX(0); opacity: 0.5; }
-  50%      { transform: translateX(-50%) translateX(6px); opacity: 0.9; }
-}
-.room.book-open .cover-pull-hint{ display: none; }
-
-.cover-inside{
-  position: absolute;
-  inset: 0;
-  border-radius: 6px;
-  transform: rotateY(180deg);
-  backface-visibility: hidden;
-  background:
-    linear-gradient(160deg, #F6ECD4 0%, var(--paper) 60%, var(--paper-shadow) 100%);
-  box-shadow: inset 0 0 60px rgba(120,95,50,0.18);
-}
-
-/* backface do cover precisa ficar junto do cover-inside via mesmo parent */
-.cover-inner{ backface-visibility: hidden; }
-
-/* posiciona cover-inside como "verso" do mesmo elemento cover */
-.cover .cover-inside{ position: absolute; }
-
-/* =========================================================
-   PARTÍCULAS DO "BOOF" AO ABRIR
-========================================================= */
-.particles-layer{
-  position: absolute;
-  inset: 0;
-  z-index: 25;
-  pointer-events: none;
-  overflow: visible;
-}
-.dust-particle{
-  position: absolute;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255,246,220,0.95) 0%, rgba(203,169,104,0.5) 60%, rgba(203,169,104,0) 100%);
-  opacity: 0;
-  will-change: transform, opacity;
-}
 
 /* =========================================================
    NAVEGAÇÃO
@@ -640,7 +293,6 @@ h3.handwritten{
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.4s, transform 0.4s;
-  z-index: 40;
 }
 .nav-controls.is-visible{
   opacity: 1;
@@ -652,7 +304,7 @@ h3.handwritten{
   height: 36px;
   border-radius: 50%;
   border: 1px solid rgba(203,169,104,0.4);
-  background: rgba(20,35,15,0.35);
+  background: rgba(20,35,15,0.45);
   color: var(--gold-soft);
   display: flex;
   align-items: center;
@@ -680,39 +332,12 @@ h3.handwritten{
 }
 
 /* =========================================================
-   RESPONSIVO
-========================================================= */
-@media (max-width: 900px){
-  .room{ justify-content: center; }
-  .book-stage{ margin-right: 0; }
-  .site-title{
-    left: 50%;
-    top: 12%;
-    transform: translateX(-50%);
-    align-items: center;
-    text-align: center;
-    max-width: 90vw;
-  }
-  .room.book-open .site-title{
-    transform: translateX(-50%) translateY(-16px);
-  }
-}
-@media (max-width: 720px){
-  :root{ --book-w: 92vw; --book-h: 68vh; }
-  .counter-value{ font-size: 60px; }
-  h3.handwritten{ font-size: 26px; }
-  .entry-text{ font-size: 18px; }
-  .page-turn-zone{ width: 34%; }
-}
-
-/* =========================================================
    CONTA / LOGIN
 ========================================================= */
 .account-btn{
   position: absolute;
   top: 22px;
   right: 26px;
-  z-index: 60;
   font-family: var(--font-ui);
   font-size: 12px;
   letter-spacing: 0.06em;
@@ -720,7 +345,7 @@ h3.handwritten{
   padding: 9px 16px;
   border-radius: 999px;
   border: 1px solid rgba(203,169,104,0.4);
-  background: rgba(20,35,15,0.4);
+  background: rgba(20,35,15,0.45);
   color: var(--gold-soft);
   transition: background 0.2s;
 }
@@ -734,7 +359,6 @@ h3.handwritten{
   top: 22px;
   left: 50%;
   transform: translateX(-50%) translateY(-8px);
-  z-index: 60;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -752,14 +376,14 @@ h3.handwritten{
   font-family: var(--font-ui);
   font-size: 11px;
   color: var(--gold-soft);
-  background: rgba(20,35,15,0.45);
+  background: rgba(20,35,15,0.5);
   padding: 4px 12px;
   border-radius: 999px;
 }
 .toolbar-buttons{
   display: flex;
   gap: 8px;
-  background: rgba(20,35,15,0.5);
+  background: rgba(20,35,15,0.55);
   border: 1px solid rgba(203,169,104,0.3);
   padding: 8px;
   border-radius: 14px;
@@ -803,6 +427,21 @@ h3.handwritten{
 body.edit-mode .editable-page{ cursor: pointer; }
 .editable-page.is-target{
   box-shadow: inset 0 0 0 3px var(--cover-blue);
+}
+
+/* zona de "pegar a quina" na borda direita da página direita —
+   propositalmente SEM pointer-events, pra deixar o clique vazar
+   pro canvas 3D por baixo (é lá que mora a física real de arrastar
+   e virar a página, via raycaster). Isto sobrescreve a regra geral
+   ".page3d *{ pointer-events:auto }" só para essa faixa específica. */
+.page-turn-zone{
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 22%;
+  pointer-events: none !important;
+  background: linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(120,95,50,0.05) 100%);
 }
 
 /* =========================================================

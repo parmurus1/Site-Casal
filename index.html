@@ -8,126 +8,105 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,500&family=Caveat:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+
+<!-- Three.js servido localmente (vendor/), sem depender de CDN externo no ar -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/build/three.module.js",
+    "three/addons/": "./vendor/three/examples/jsm/"
+  }
+}
+</script>
 </head>
 <body>
 
-  <div class="room" id="room">
+  <div class="scene-root" id="sceneRoot">
 
-    <!-- grama de fundo, oscilando com o vento -->
-    <div class="lawn" id="lawn" aria-hidden="true"></div>
-    <div class="sun-glow" aria-hidden="true"></div>
-    <div class="sun-rays" aria-hidden="true"></div>
+    <!-- CENA 3D — WebGL (grama, sol, luzes, capa/lombada/contracapa 3D, sombras, partículas) -->
+    <canvas id="webglCanvas"></canvas>
 
-    <!-- título do site (some ao abrir o diário) -->
-    <div class="site-title" id="siteTitle">
-      <span class="site-title-eyebrow">o diário de</span>
-      <h1>Nós Dois</h1>
-      <span class="site-title-heart">♥</span>
-    </div>
+    <!-- páginas em CSS3D — HTML de verdade (editável) posicionado no mesmo espaço 3D -->
+    <div id="css3dContainer"></div>
 
-    <!-- camada que treme suavemente (câmera) -->
-    <div class="camera-shake" id="cameraShake">
+    <!-- ================= UI 2D FIXA (não participa da perspectiva) ================= -->
+    <div class="ui-layer" id="uiLayer">
 
-      <div class="table-glow"></div>
+      <!-- título do site (some ao abrir o diário) -->
+      <div class="site-title" id="siteTitle">
+        <h1>Nosso<br>Diário</h1>
+      </div>
 
-      <!-- partículas do "boof" -->
-      <div class="particles-layer" id="particlesLayer" aria-hidden="true"></div>
+      <!-- navegação de páginas -->
+      <div class="nav-controls" id="navControls">
+        <button class="nav-btn" id="prevBtn" aria-label="Página anterior">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <span class="nav-page-indicator" id="pageIndicator">capa</span>
+        <button class="nav-btn" id="nextBtn" aria-label="Próxima página">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="nav-btn nav-btn-close" id="closeBookBtn" aria-label="Fechar diário" title="Fechar diário">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
 
-      <!-- LIVRO -->
-      <div class="book-stage" id="bookStage">
-        <div class="book" id="book">
-          <div class="book-spine"></div>
+      <!-- botão de login / status -->
+      <button class="account-btn" id="accountBtn">entrar</button>
 
-          <!-- páginas geradas dinamicamente via JS -->
-          <div class="pages" id="pages"></div>
+      <!-- barra de ferramentas do editor (só aparece logado + em modo edição) -->
+      <div class="editor-toolbar" id="editorToolbar">
+        <span class="editor-hint" id="editorHint">clique numa página pra selecionar onde adicionar</span>
+        <div class="toolbar-buttons">
+          <button data-add="text" title="Adicionar texto">✎ texto</button>
+          <button data-add="image" title="Adicionar imagem">🖼 imagem</button>
+          <button data-add="audio" title="Adicionar áudio">♪ áudio</button>
+          <button data-add="video" title="Adicionar vídeo">▶ vídeo</button>
+          <button id="addSpreadBtn" title="Adicionar novas páginas">+ páginas</button>
+          <button id="editDateBtn" title="Editar data de início">📅 data</button>
+        </div>
+      </div>
 
-          <!-- CAPA -->
-          <div class="cover" id="cover">
-            <div class="cover-inner">
-              <div class="ribbon"></div>
-              <div class="cover-frame">
-                <span class="cover-eyebrow">o diário de</span>
-                <h1 class="cover-title">Nós Dois</h1>
-                <span class="cover-heart">♥</span>
-              </div>
-              <div class="cover-pull-hint" id="coverPullHint">arraste pra abrir →</div>
-            </div>
-            <div class="cover-inside"></div>
+      <input type="file" id="fileInputImage" accept="image/*" hidden>
+      <input type="file" id="fileInputAudio" accept="audio/*" hidden>
+      <input type="file" id="fileInputVideo" accept="video/*" hidden>
+
+      <!-- MODAL DE LOGIN -->
+      <div class="modal-overlay" id="loginModal" hidden>
+        <div class="modal">
+          <button class="modal-close" id="closeLoginModal">×</button>
+          <div class="modal-tabs">
+            <button class="tab-btn is-active" data-tab="signin">entrar</button>
+            <button class="tab-btn" data-tab="signup">criar conta</button>
           </div>
+          <form id="loginForm">
+            <label>e-mail
+              <input type="email" id="loginEmail" required autocomplete="email">
+            </label>
+            <label>senha
+              <input type="password" id="loginPassword" required autocomplete="current-password" minlength="6">
+            </label>
+            <p class="modal-error" id="loginError"></p>
+            <button type="submit" class="modal-submit" id="loginSubmit">entrar</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- MODAL DE DATA DE INÍCIO -->
+      <div class="modal-overlay" id="dateModal" hidden>
+        <div class="modal">
+          <button class="modal-close" id="closeDateModal">×</button>
+          <h3>Desde quando vocês estão juntos?</h3>
+          <form id="dateForm">
+            <label>data
+              <input type="date" id="startDateInput" required>
+            </label>
+            <button type="submit" class="modal-submit">salvar</button>
+          </form>
         </div>
       </div>
 
     </div>
-
-    <!-- navegação de páginas -->
-    <div class="nav-controls" id="navControls">
-      <button class="nav-btn" id="prevBtn" aria-label="Página anterior">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-      <span class="nav-page-indicator" id="pageIndicator">capa</span>
-      <button class="nav-btn" id="nextBtn" aria-label="Próxima página">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-      <button class="nav-btn nav-btn-close" id="closeBookBtn" aria-label="Fechar diário" title="Fechar diário">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-    </div>
-
-    <!-- botão de login / status -->
-    <button class="account-btn" id="accountBtn">entrar</button>
-
-    <!-- barra de ferramentas do editor (só aparece logado + em modo edição) -->
-    <div class="editor-toolbar" id="editorToolbar">
-      <span class="editor-hint" id="editorHint">clique numa página pra selecionar onde adicionar</span>
-      <div class="toolbar-buttons">
-        <button data-add="text" title="Adicionar texto">✎ texto</button>
-        <button data-add="image" title="Adicionar imagem">🖼 imagem</button>
-        <button data-add="audio" title="Adicionar áudio">♪ áudio</button>
-        <button data-add="video" title="Adicionar vídeo">▶ vídeo</button>
-        <button id="addSpreadBtn" title="Adicionar novas páginas">+ páginas</button>
-        <button id="editDateBtn" title="Editar data de início">📅 data</button>
-      </div>
-    </div>
-
-    <input type="file" id="fileInputImage" accept="image/*" hidden>
-    <input type="file" id="fileInputAudio" accept="audio/*" hidden>
-    <input type="file" id="fileInputVideo" accept="video/*" hidden>
-
-    <!-- MODAL DE LOGIN -->
-    <div class="modal-overlay" id="loginModal" hidden>
-      <div class="modal">
-        <button class="modal-close" id="closeLoginModal">×</button>
-        <div class="modal-tabs">
-          <button class="tab-btn is-active" data-tab="signin">entrar</button>
-          <button class="tab-btn" data-tab="signup">criar conta</button>
-        </div>
-        <form id="loginForm">
-          <label>e-mail
-            <input type="email" id="loginEmail" required autocomplete="email">
-          </label>
-          <label>senha
-            <input type="password" id="loginPassword" required autocomplete="current-password" minlength="6">
-          </label>
-          <p class="modal-error" id="loginError"></p>
-          <button type="submit" class="modal-submit" id="loginSubmit">entrar</button>
-        </form>
-      </div>
-    </div>
-
-    <!-- MODAL DE DATA DE INÍCIO -->
-    <div class="modal-overlay" id="dateModal" hidden>
-      <div class="modal">
-        <button class="modal-close" id="closeDateModal">×</button>
-        <h3>Desde quando vocês estão juntos?</h3>
-        <form id="dateForm">
-          <label>data
-            <input type="date" id="startDateInput" required>
-          </label>
-          <button type="submit" class="modal-submit">salvar</button>
-        </form>
-      </div>
-    </div>
-
   </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -137,6 +116,8 @@
 <script src="js/auth.js"></script>
 <script src="js/editor.js"></script>
 <script src="js/effects.js"></script>
-<script src="js/app.js"></script>
+<script type="module" src="js/scene3d.js"></script>
+<script type="module" src="js/app.js"></script>
 </body>
 </html>
+

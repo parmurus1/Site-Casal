@@ -1,5 +1,7 @@
 // =========================================================
-// APP — junta tudo: livro 3D, navegação, auth, editor, contador
+// APP — junta tudo: cena 3D do livro, navegação, auth,
+// editor, contador. Toda a física de abrir/virar página
+// vive em scene3d.js; aqui só ligamos UI e dados.
 // =========================================================
 const AppState = {
   pages: [],
@@ -11,10 +13,7 @@ const AppState = {
   isBookOpen: false,
 };
 
-const room = document.getElementById('room');
-const bookStage = document.getElementById('bookStage');
-const book = document.getElementById('book');
-const cover = document.getElementById('cover');
+const siteTitle = document.getElementById('siteTitle');
 const navControls = document.getElementById('navControls');
 const prevBtn = document.getElementById('prevBtn');
 const nextBtn = document.getElementById('nextBtn');
@@ -26,16 +25,43 @@ const editorToolbar = document.getElementById('editorToolbar');
 // BOOT
 // =========================================================
 async function boot() {
+  window.Scene3D.init();
+
   await Auth.init();
   Editor.init(AppState);
   Effects.init();
 
   await loadData();
   Editor.renderAll();
+  window.Scene3D.setCoupleLabel(formatCoupleLabel(AppState.coupleInfo));
   updateCounter();
   setInterval(updateCounter, 60 * 1000);
 
-  wireBookOpening();
+  window.Scene3D.onSpreadChange((index, total, bookOpenNow) => {
+    AppState.isBookOpen = bookOpenNow;
+    siteTitle.classList.toggle('is-hidden', bookOpenNow);
+
+    if (!bookOpenNow) {
+      navControls.classList.remove('is-visible');
+      pageIndicator.textContent = 'capa';
+      return;
+    }
+    if (index < 0) return; // livro só terminou de abrir, ainda sem spread ativo
+    AppState.currentSpread = index;
+    navControls.classList.add('is-visible');
+    prevBtn.disabled = index === 0;
+    nextBtn.disabled = index === total - 1;
+    pageIndicator.textContent = `página ${index + 1} de ${total}`;
+  });
+
+  window.Scene3D.onPagesReady(() => {
+    // as páginas do miolo (incluindo a do contador) só agora ficam
+    // conectadas ao DOM real — o CSS3DRenderer não anexa elementos de
+    // objetos invisíveis, então qualquer updateCounter() anterior
+    // escreveu num nó que ainda não existia na árvore do documento.
+    updateCounter();
+  });
+
   wireNav();
   wireAccount();
   wireToolbar();
@@ -56,181 +82,28 @@ async function loadData() {
   AppState.coupleInfo = coupleInfo;
 }
 
-// =========================================================
-// ABRIR O LIVRO — pega e puxa a capa manualmente até "boof"
-// =========================================================
-const OPEN_DRAG_THRESHOLD_DEG = -60; // não puxou o suficiente? volta pro lugar
-
-function wireBookOpening() {
-  let dragging = false;
-  let moved = false;
-  let startX = 0;
-  let currentAngle = 0;
-
-  cover.addEventListener('pointerdown', (e) => {
-    if (AppState.isBookOpen) return;
-    dragging = true;
-    moved = false;
-    startX = e.clientX;
-    cover.classList.add('is-dragging');
-    if (cover.setPointerCapture) {
-      try { cover.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
-    }
-  });
-
-  cover.addEventListener('pointermove', (e) => {
-    if (!dragging) return;
-    const rect = book.getBoundingClientRect();
-    const dx = e.clientX - startX;
-    if (Math.abs(dx) > 4) moved = true;
-    // arrastar pra esquerda (dx negativo) vai abrindo a capa
-    const deg = Math.max(-178, Math.min(0, (dx / rect.width) * 180));
-    currentAngle = deg;
-    cover.style.transform = `rotateY(${deg}deg)`;
-  });
-
-  const finishDrag = () => {
-    if (!dragging) return;
-    dragging = false;
-    cover.classList.remove('is-dragging');
-
-    if (currentAngle <= OPEN_DRAG_THRESHOLD_DEG) {
-      openBook();
-    } else if (currentAngle < 0) {
-      // não puxou o suficiente — capa volta pro lugar
-      cover.style.transform = '';
-    }
-    currentAngle = 0;
-  };
-
-  cover.addEventListener('pointerup', finishDrag);
-  cover.addEventListener('pointercancel', finishDrag);
-
-  // clique simples (sem arrastar) também abre/fecha
-  cover.addEventListener('click', () => {
-    if (moved) return;
-    if (AppState.isBookOpen) {
-      closeBook();
-    } else {
-      openBook();
-    }
-  });
-}
-
-function openBook() {
-  AppState.isBookOpen = true;
-  cover.style.transform = '';
-  cover.classList.add('is-open');
-  room.classList.add('book-open');
-
-  Effects.playBoof();
-  Effects.burstParticles(6, 50, 30);
-  Effects.shakeCamera(7, 480);
-
-  setTimeout(() => {
-    goToSpread(0);
-    navControls.classList.add('is-visible');
-  }, 480);
-}
-
-function closeBook() {
-  AppState.isBookOpen = false;
-  cover.style.transform = '';
-  cover.classList.remove('is-open');
-  room.classList.remove('book-open');
-  navControls.classList.remove('is-visible');
-  Effects.shakeCamera(4, 320);
-
-  const spreads = Array.from(document.querySelectorAll('.spread'));
-  spreads.forEach((s) => s.classList.remove('is-active', 'is-turned-back'));
-  AppState.currentSpread = 0;
+function formatCoupleLabel(info) {
+  if (!info) return 'Nós Dois';
+  const a = (info.name_a || '').trim();
+  const b = (info.name_b || '').trim();
+  if (a && b) return `${a} & ${b}`;
+  return a || b || 'Nós Dois';
 }
 
 // =========================================================
-// NAVEGAÇÃO ENTRE SPREADS
+// NAVEGAÇÃO ENTRE SPREADS — a física real (dobradiça, ângulo,
+// drag) mora em Scene3D; aqui só disparamos a transição.
 // =========================================================
 function wireNav() {
-  prevBtn.addEventListener('click', () => goToSpread(AppState.currentSpread - 1));
-  nextBtn.addEventListener('click', () => goToSpread(AppState.currentSpread + 1));
-  document.getElementById('closeBookBtn').addEventListener('click', () => closeBook());
+  prevBtn.addEventListener('click', () => window.Scene3D.goToSpread(AppState.currentSpread - 1));
+  nextBtn.addEventListener('click', () => window.Scene3D.goToSpread(AppState.currentSpread + 1));
+  document.getElementById('closeBookBtn').addEventListener('click', () => window.Scene3D.closeBook());
   document.addEventListener('keydown', (e) => {
     if (!AppState.isBookOpen) return;
-    if (e.key === 'ArrowRight') goToSpread(AppState.currentSpread + 1);
-    if (e.key === 'ArrowLeft') goToSpread(AppState.currentSpread - 1);
-    if (e.key === 'Escape') closeBook();
+    if (e.key === 'ArrowRight') window.Scene3D.goToSpread(AppState.currentSpread + 1);
+    if (e.key === 'ArrowLeft') window.Scene3D.goToSpread(AppState.currentSpread - 1);
+    if (e.key === 'Escape') window.Scene3D.closeBook();
   });
-
-  wirePageDragTurn();
-}
-
-// -------- pegar o canto da página e virar manualmente --------
-const PAGE_TURN_THRESHOLD_DEG = -70;
-
-function wirePageDragTurn() {
-  let dragging = false;
-  let activeSpread = null;
-  let startX = 0;
-  let currentAngle = 0;
-
-  document.addEventListener('pointerdown', (e) => {
-    if (!AppState.isBookOpen) return;
-    const zone = e.target.closest('.page-turn-zone');
-    if (!zone) return;
-    const spread = document.querySelectorAll('.spread')[AppState.currentSpread];
-    if (!spread) return;
-
-    dragging = true;
-    activeSpread = spread;
-    startX = e.clientX;
-    currentAngle = 0;
-    spread.classList.add('is-dragging');
-    if (zone.setPointerCapture) {
-      try { zone.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
-    }
-
-    const onMove = (ev) => {
-      if (!dragging || !activeSpread) return;
-      const rect = book.getBoundingClientRect();
-      const dx = ev.clientX - startX;
-      const deg = Math.max(-170, Math.min(0, (dx / rect.width) * 220));
-      currentAngle = deg;
-      activeSpread.style.transform = `rotateY(${deg}deg)`;
-    };
-
-    const onUp = () => {
-      if (!dragging || !activeSpread) return;
-      dragging = false;
-      activeSpread.classList.remove('is-dragging');
-      activeSpread.style.transform = '';
-
-      const isLast = AppState.currentSpread >= document.querySelectorAll('.spread').length - 1;
-      if (currentAngle <= PAGE_TURN_THRESHOLD_DEG && !isLast) {
-        goToSpread(AppState.currentSpread + 1);
-      }
-      activeSpread = null;
-      zone.removeEventListener('pointermove', onMove);
-      zone.removeEventListener('pointerup', onUp);
-      zone.removeEventListener('pointercancel', onUp);
-    };
-
-    zone.addEventListener('pointermove', onMove);
-    zone.addEventListener('pointerup', onUp);
-    zone.addEventListener('pointercancel', onUp);
-  });
-}
-
-function goToSpread(index) {
-  const spreads = Array.from(document.querySelectorAll('.spread'));
-  if (index < 0 || index >= spreads.length) return;
-  spreads.forEach((s, i) => {
-    s.classList.remove('is-active', 'is-turned-back');
-    if (i < index) s.classList.add('is-turned-back');
-    if (i === index) s.classList.add('is-active');
-  });
-  AppState.currentSpread = index;
-  prevBtn.disabled = index === 0;
-  nextBtn.disabled = index === spreads.length - 1;
-  pageIndicator.textContent = `página ${index + 1} de ${spreads.length}`;
 }
 
 // =========================================================
@@ -275,7 +148,6 @@ function wireAccount() {
       AppState.editMode = !AppState.editMode;
       applyEditModeUI();
       Editor.renderAll();
-      if (AppState.isBookOpen) goToSpread(AppState.currentSpread);
     }
   });
 }
@@ -329,7 +201,7 @@ function wireToolbar() {
       const newPages = await Diary.createSpread();
       AppState.pages.push(...newPages);
       const total = Editor.renderAll();
-      goToSpread(total - 1);
+      window.Scene3D.goToSpread(total - 1);
     } catch (err) {
       alert(err.message);
     }
@@ -395,9 +267,9 @@ function wireModals() {
     try {
       const updated = await Diary.updateCoupleInfo({ start_date: value });
       AppState.coupleInfo = updated;
+      window.Scene3D.setCoupleLabel(formatCoupleLabel(AppState.coupleInfo));
       updateCounter();
       Editor.renderAll();
-      if (AppState.isBookOpen) goToSpread(AppState.currentSpread);
       closeModal('dateModal');
     } catch (err) {
       alert(err.message);

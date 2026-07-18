@@ -3,11 +3,9 @@
 // arrastar / redimensionar / adicionar / apagar
 // =========================================================
 const Editor = {
-  pagesEl: null,
   state: null, // referência ao AppState do app.js
 
   init(appState) {
-    this.pagesEl = document.getElementById('pages');
     this.state = appState;
   },
 
@@ -34,23 +32,22 @@ const Editor = {
   },
 
   // ---------------------------------------------------------
-  // RENDERIZAÇÃO
+  // RENDERIZAÇÃO — monta o HTML de cada página e entrega pro
+  // Scene3D posicionar como plano físico dentro do livro 3D
   // ---------------------------------------------------------
   renderAll() {
     const spreads = this.groupIntoSpreads(this.state.pages);
-    this.pagesEl.innerHTML = '';
+
+    window.Scene3D.setSpreadCount(spreads.length);
 
     spreads.forEach((spread) => {
-      const spreadEl = document.createElement('section');
-      spreadEl.className = 'spread';
-      spreadEl.dataset.index = spread.index;
+      const leftEl = spread.index === 0
+        ? this.buildCounterPage()
+        : this.buildPageEl(spread.left, 'left', spread.index);
+      const rightEl = this.buildPageEl(spread.right, 'right', spread.index);
 
-      spreadEl.appendChild(
-        spread.index === 0 ? this.buildCounterPage() : this.buildPageEl(spread.left, 'left')
-      );
-      spreadEl.appendChild(this.buildPageEl(spread.right, 'right'));
-
-      this.pagesEl.appendChild(spreadEl);
+      window.Scene3D.setSpreadContent(spread.index, 'left', leftEl);
+      window.Scene3D.setSpreadContent(spread.index, 'right', rightEl);
     });
 
     return spreads.length;
@@ -58,7 +55,7 @@ const Editor = {
 
   buildCounterPage() {
     const wrap = document.createElement('div');
-    wrap.className = 'page page-left';
+    wrap.className = 'page3d';
     const info = this.state.coupleInfo;
     wrap.innerHTML = `
       <div class="page-content counter-page">
@@ -80,9 +77,9 @@ const Editor = {
     return `${d}/${m}/${y}`;
   },
 
-  buildPageEl(page, side) {
+  buildPageEl(page, side, spreadIndex) {
     const wrap = document.createElement('div');
-    wrap.className = `page page-${side}`;
+    wrap.className = 'page3d';
 
     const content = document.createElement('div');
     content.className = 'page-content editable-page';
@@ -105,7 +102,11 @@ const Editor = {
 
     wrap.appendChild(content);
 
-    // alça no canto da página direita — pra "pegar" e virar manualmente
+    // canto/borda direita da página direita: elemento IRMÃO do
+    // conteúdo (não descendente dele), pra realmente ficar fora da
+    // árvore ".page3d *{ pointer-events:auto }" e deixar o clique
+    // vazar até o canvas 3D por baixo, onde mora a física real de
+    // "pegar e virar a página" (Scene3D, via raycaster).
     if (side === 'right') {
       const turnZone = document.createElement('div');
       turnZone.className = 'page-turn-zone';
